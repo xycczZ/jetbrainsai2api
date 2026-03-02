@@ -119,3 +119,17 @@ func (s *Server) anthropicMessages(c *gin.Context) {
 		handleAnthropicNonStreamingResponseWithMetrics(c, resp, &anthReq, startTime, accountIdentifier, s.metricsService, logger)
 	}
 }
+
+// anthropicCountTokens 处理 Anthropic count_tokens 接口（/v1/messages/count_tokens）。
+// Claude Code 会在发送消息前调用此接口预估 token 用量。
+// 因上游 JetBrains API 无对应接口，返回 stub 响应（input_tokens=0）满足协议要求。
+func (s *Server) anthropicCountTokens(c *gin.Context) {
+	var req core.AnthropicMessagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondWithAnthropicError(c, http.StatusBadRequest, core.AnthropicErrorInvalidRequest, "invalid request body")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"input_tokens": 0,
+	})
+}

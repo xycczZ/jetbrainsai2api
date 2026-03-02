@@ -105,16 +105,55 @@ func AnthropicToJetbrainsTools(anthTools []core.AnthropicTool) []core.JetbrainsT
 	var jetbrainsTools []core.JetbrainsToolDefinition
 
 	for _, tool := range anthTools {
+		// 过滤 InputSchema 中 Gemini 不支持的字段（如 $schema），避免上游 400 报错
+		cleanedSchema := stripUnsupportedSchemaFields(tool.InputSchema)
 		jetbrainsTools = append(jetbrainsTools, core.JetbrainsToolDefinition{
 			Name:        tool.Name,
 			Description: tool.Description,
 			Parameters: core.JetbrainsToolParametersWrapper{
-				Schema: tool.InputSchema,
+				Schema: cleanedSchema,
 			},
 		})
 	}
 
 	return jetbrainsTools
+}
+
+// stripUnsupportedSchemaFields 递归过滤 JSON Schema 中 Gemini 无法识别的字段。
+// Gemini 支持标准 JSON Schema 的子集，不支持 $schema、$id、$defs 等元字段。
+func stripUnsupportedSchemaFields(schema map[string]any) map[string]any {
+	if schema == nil {
+		return nil
+	}
+
+	// 顶层元字段黑名单（以 $ 开头的均移除）
+	result := make(map[string]any, len(schema))
+	for k, v := range schema {
+		if len(k) > 0 && k[0] == '$' {
+			// 跳过 $schema、$id、$defs、$ref 等元字段
+			continue
+		}
+
+		// 对嵌套的 properties 递归处理
+		if k == "properties" {
+			if props, ok := v.(map[string]any); ok {
+				cleaned := make(map[string]any, len(props))
+				for propName, propSchema := range props {
+					if propMap, ok := propSchema.(map[string]any); ok {
+						cleaned[propName] = stripUnsupportedSchemaFields(propMap)
+					} else {
+						cleaned[propName] = propSchema
+					}
+				}
+				result[k] = cleaned
+				continue
+			}
+		}
+
+		result[k] = v
+	}
+
+	return result
 }
 
 // ExtractStringContent extracts text content from message content.

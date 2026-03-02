@@ -24,6 +24,9 @@ type anthropicStreamWriter struct {
 	textBlockIndex int
 	nextBlockIndex int
 
+	// stopReason 记录来自 JetBrains FinishMetadata 的结束原因，映射为 Anthropic stop_reason
+	stopReason string
+
 	tool struct {
 		id      string
 		name    string
@@ -255,6 +258,11 @@ func handleAnthropicStreamingResponseWithMetrics(c *gin.Context, resp *http.Resp
 			}
 
 		case core.JetBrainsEventTypeFinishMetadata:
+			// 从 FinishMetadata 提取结束原因，映射为 Anthropic stop_reason
+			if reason, ok := streamData["reason"].(string); ok && reason != "" {
+				w.stopReason = convert.MapJetbrainsFinishReason(reason)
+			}
+
 			if err := w.flushCurrentTool(); err != nil {
 				logger.Debug("Failed to flush tool block at finish: %v", err)
 				w.writeErr = err
@@ -290,6 +298,23 @@ func handleAnthropicStreamingResponseWithMetrics(c *gin.Context, resp *http.Resp
 	if err := w.closeTextBlock(); err != nil {
 		metrics.RecordFailureWithMetrics(m, startTime, anthReq.Model, accountIdentifier)
 		logger.Debug("Failed to write content_block_stop: %v", err)
+		return
+	}
+
+	// 发送 message_delta 事件（包含 stop_reason），Anthropic 协议规定必须在 message_stop 前发送。
+	// Claude 客户端依赖此事件确认响应完整，缺失将导致 ECONNRESET。
+	if w.stopReason == "" {
+		// 若 JetBrains 未提供结束原因，根据是否有 tool 调用推断
+		if w.tool.started {
+			w.stopReason = core.StopReasonToolUse
+		} else {
+			w.stopReason = core.StopReasonEndTurn
+		}
+	}
+	messageDeltaData := convert.GenerateAnthropicMessageDelta(w.stopReason)
+	if err := w.writeEvent("message_delta", messageDeltaData); err != nil {
+		metrics.RecordFailureWithMetrics(m, startTime, anthReq.Model, accountIdentifier)
+		logger.Debug("Failed to write message_delta: %v", err)
 		return
 	}
 

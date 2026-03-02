@@ -205,6 +205,7 @@ func (p *RequestProcessor) buildPayload(
 
 	p.logger.Debug("JetBrains payload: model=%s->%s, messages=%d, tools=%d, size=%d",
 		model, internalModel, len(messages), toolCount, len(payloadBytes))
+	p.logger.Debug("JetBrains payload body: %s", string(payloadBytes))
 
 	return payloadBytes, nil
 }

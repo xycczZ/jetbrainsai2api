@@ -33,5 +33,6 @@ func (s *Server) setupRoutes() {
 		api.GET("/models", s.listModels)
 		api.POST("/chat/completions", s.chatCompletions)
 		api.POST("/messages", s.anthropicMessages)
+		api.POST("/messages/count_tokens", s.anthropicCountTokens)
 	}
 }

@@ -135,6 +135,7 @@ func NewServer(cfg config.ServerConfig) (*Server, error) {
 
 func createOptimizedHTTPClient(settings config.HTTPClientSettings) *http.Client {
 	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment, // 读取 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 环境变量
 		MaxIdleConns:          settings.MaxIdleConns,
 		MaxIdleConnsPerHost:   settings.MaxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.MaxConnsPerHost,

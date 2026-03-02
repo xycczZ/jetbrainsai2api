@@ -243,6 +243,26 @@ func GenerateAnthropicStreamResponse(responseType string, content string, index 
 	return data
 }
 
+// GenerateAnthropicMessageDelta 生成 Anthropic 流式协议的 message_delta 事件数据。
+// Claude 客户端强依赖此事件获取 stop_reason，缺失会导致客户端认为响应不完整而断开连接（ECONNRESET）。
+func GenerateAnthropicMessageDelta(stopReason string) []byte {
+	payload := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   stopReason,
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": 0,
+		},
+	}
+	data, err := util.MarshalJSON(payload)
+	if err != nil {
+		return []byte{}
+	}
+	return data
+}
+
 // GenerateMessageID generates an Anthropic message ID
 func GenerateMessageID() string {
 	return util.GenerateID(core.MessageIDPrefix)
