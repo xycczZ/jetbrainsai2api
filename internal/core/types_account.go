@@ -10,10 +10,19 @@ type QuotaAmount struct {
 	Amount string `json:"amount"`
 }
 
-// QuotaUsage holds current and maximum quota usage.
+// QuotaDetail holds current, maximum, and available quota for a quota segment.
+type QuotaDetail struct {
+	Current   QuotaAmount `json:"current"`
+	Maximum   QuotaAmount `json:"maximum"`
+	Available QuotaAmount `json:"available"`
+}
+
+// QuotaUsage holds current and maximum quota usage, plus tariff/topUp breakdown.
 type QuotaUsage struct {
-	Current QuotaAmount `json:"current"`
-	Maximum QuotaAmount `json:"maximum"`
+	Current     QuotaAmount  `json:"current"`
+	Maximum     QuotaAmount  `json:"maximum"`
+	TariffQuota *QuotaDetail `json:"tariffQuota,omitempty"` // monthly subscription quota
+	TopUpQuota  *QuotaDetail `json:"topUpQuota,omitempty"`  // shared/topUp quota
 }
 
 // JetbrainsQuotaResponse defines the structure for the JetBrains quota API response.

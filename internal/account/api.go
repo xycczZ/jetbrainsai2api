@@ -137,7 +137,7 @@ func RefreshJetbrainsJWT(account *core.JetbrainsAccount, httpClient *http.Client
 	state, _ := data["state"].(string)
 	tokenStr, _ := data["token"].(string)
 
-	if state == "PAID" && tokenStr != "" {
+	if tokenStr != "" {
 		var expiryTime time.Time
 		expiryTime, err := util.ParseJWTExpiry(tokenStr)
 		if err != nil {
@@ -150,23 +150,41 @@ func RefreshJetbrainsJWT(account *core.JetbrainsAccount, httpClient *http.Client
 		account.ExpiryTime = expiryTime
 		account.Unlock()
 
-		logger.Info("Successfully refreshed JWT for licenseId %s, expires at %s", licenseID, expiryTime.Format(time.RFC3339))
+		logger.Info("Successfully refreshed JWT for licenseId %s (state: %s), expires at %s", licenseID, state, expiryTime.Format(time.RFC3339))
 		return nil
 	}
 
-	return fmt.Errorf("JWT refresh failed: invalid response state %s", state)
+	return fmt.Errorf("JWT refresh failed: empty token in response (state: %s)", state)
 }
 
-// ProcessQuotaData processes quota data and updates account status
+// ProcessQuotaData processes quota data and updates account status.
+// It considers both tariffQuota (monthly subscription) and topUpQuota (shared/top-up),
+// so that an account is only marked as having no quota when both are exhausted.
 func ProcessQuotaData(quotaData *core.JetbrainsQuotaResponse, account *core.JetbrainsAccount, logger core.Logger) {
-	dailyUsed, _ := strconv.ParseFloat(quotaData.Current.Current.Amount, 64)
-	dailyTotal, _ := strconv.ParseFloat(quotaData.Current.Maximum.Amount, 64)
+	var hasQuota bool
 
-	if dailyTotal == 0 {
-		dailyTotal = 1
+	// Prefer the fine-grained breakdown when available.
+	// An account still has quota if topUpQuota has a positive available balance,
+	// even when the monthly tariffQuota is fully consumed.
+	if quotaData.Current.TopUpQuota != nil {
+		topUpAvailable, _ := strconv.ParseFloat(quotaData.Current.TopUpQuota.Available.Amount, 64)
+		if topUpAvailable > 0 {
+			hasQuota = true
+		} else if quotaData.Current.TariffQuota != nil {
+			var tariffAvailable float64
+			tariffAvailable, _ = strconv.ParseFloat(quotaData.Current.TariffQuota.Available.Amount, 64)
+			hasQuota = tariffAvailable > 0
+		}
+	} else {
+		// Fallback: compare overall used vs total.
+		dailyUsed, _ := strconv.ParseFloat(quotaData.Current.Current.Amount, 64)
+		dailyTotal, _ := strconv.ParseFloat(quotaData.Current.Maximum.Amount, 64)
+		if dailyTotal == 0 {
+			dailyTotal = 1
+		}
+		hasQuota = dailyUsed < dailyTotal
 	}
 
-	hasQuota := dailyUsed < dailyTotal
 	SetAccountQuotaStatus(account, hasQuota, time.Now())
 
 	if !hasQuota {

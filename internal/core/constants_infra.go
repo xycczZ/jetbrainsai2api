@@ -5,7 +5,7 @@ import "time"
 // Timeout and time constants
 const (
 	QuotaCacheTime = 1 * time.Hour
-	JWTRefreshTime = 12 * time.Hour
+	JWTRefreshTime = 1 * time.Hour
 )
 
 // HTTP client config constants
