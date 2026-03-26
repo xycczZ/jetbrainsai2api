@@ -33,11 +33,16 @@ func MapJetbrainsToOpenAIFinishReason(jetbrainsReason string) string {
 	}
 }
 
-// ProcessJetbrainsStream processes the event stream from the JetBrains API
+// ProcessJetbrainsStream processes the event stream from the JetBrains API.
+// 使用 ctxReader 包装 body，确保 context 取消时 scanner.Scan() 能立即解除阻塞，
+// 避免客户端断开后服务端 goroutine 卡死、账户无法释放的问题。
 func ProcessJetbrainsStream(ctx context.Context, body io.Reader, logger core.Logger, onEvent func(event map[string]any) bool) error {
-	scanner := bufio.NewScanner(body)
+	// ctxReader：在 ctx 取消时立即中断阻塞的 Read 调用
+	ctxBody := newContextReader(ctx, body)
+	scanner := bufio.NewScanner(ctxBody)
 	scanner.Buffer(make([]byte, core.MaxScannerBufferSize), core.MaxScannerBufferSize)
 	for scanner.Scan() {
+		// 双重检查：scanner.Scan() 内部 Read 已感知取消，此处作为快速路径
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -69,10 +74,52 @@ func ProcessJetbrainsStream(ctx context.Context, body io.Reader, logger core.Log
 	}
 
 	if err := scanner.Err(); err != nil {
+		// context 取消导致的 read 错误，转换为 ctx.Err() 以便上层统一处理
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("stream read error: %w", err)
 	}
 
 	return nil
+}
+
+// contextReader 在 context 取消时中断阻塞的 Read 调用，
+// 解决 bufio.Scanner.Scan() 无法感知 context 的问题。
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func newContextReader(ctx context.Context, r io.Reader) io.Reader {
+	return &contextReader{ctx: ctx, r: r}
+}
+
+func (cr *contextReader) Read(p []byte) (int, error) {
+	// 优先检查 context 是否已取消，避免发起无意义的阻塞读
+	select {
+	case <-cr.ctx.Done():
+		return 0, cr.ctx.Err()
+	default:
+	}
+
+	// 通过 channel 异步执行 Read，以支持 context 中断
+	type result struct {
+		n   int
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		n, err := cr.r.Read(p)
+		ch <- result{n, err}
+	}()
+
+	select {
+	case <-cr.ctx.Done():
+		return 0, cr.ctx.Err()
+	case res := <-ch:
+		return res.n, res.err
+	}
 }
 
 // openaiStreamFinisher encapsulates the repeated tool-calls-delta + finish-chunk + SSE-done sequence.
