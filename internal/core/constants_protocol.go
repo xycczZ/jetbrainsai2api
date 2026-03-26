@@ -20,7 +20,9 @@ const (
 	HeaderCacheControl     = "Cache-Control"
 	HeaderConnection       = "Connection"
 	HeaderXAPIKey          = "x-api-key"
+	HeaderXAccelBuffering  = "X-Accel-Buffering"  // 禁用 Nginx 代理层缓冲，SSE 流式响应必须设置为 no
 	AuthBearerPrefix       = "Bearer "
+	AccelBufferingDisabled = "no"
 )
 
 // SSE stream constants

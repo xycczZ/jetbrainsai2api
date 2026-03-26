@@ -18,6 +18,10 @@ func setStreamingHeaders(c *gin.Context, format string) {
 	c.Header(core.HeaderContentType, core.ContentTypeEventStream)
 	c.Header(core.HeaderCacheControl, core.CacheControlNoCache)
 	c.Header(core.HeaderConnection, core.ConnectionKeepAlive)
+	// 禁用 Nginx/代理层缓冲，确保 SSE 数据实时推送至客户端
+	// 当使用 ALL_PROXY 等代理转发时，若缺少此 Header，流式数据会被代理积压，
+	// 导致客户端（如 Claude Code）长时间无响应
+	c.Header(core.HeaderXAccelBuffering, core.AccelBufferingDisabled)
 	if format == core.APIFormatAnthropic {
 		c.Header("Access-Control-Allow-Origin", "*")
 	}
